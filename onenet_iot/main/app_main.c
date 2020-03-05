@@ -30,6 +30,7 @@
 #include "esp_log.h"
 #include "mqtt_client.h"
 #include "base64.h"
+#include "hmac.h"
 
 static const char *TAG = "MQTT_EXAMPLE";
 
@@ -91,6 +92,36 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 static void mqtt_app_start(void)
 {
+    unsigned char key[] = "PBA+6/QSINrOuneGgr9+98Zc/Bml5DWEOVbWkyEH8dM=";
+    unsigned char base64_key[64] = {0};
+    unsigned char signature[128] = {0};
+    unsigned char sign[128] = {0};
+    size_t sing_len;
+
+    if(base64_decode(key, strlen((char *)key), base64_key) == 0)
+    {
+        printf("base64 error\n");
+        return;
+    }
+    printf("base64 decode");
+    int i = 0;
+    for(i = 0; i < strlen((char *)base64_key); i++)
+    {
+        printf(" %02x", base64_key[i]);
+    }
+    printf("\n");
+    sprintf((char *)signature, "%s\n%s\n%s\n%s", "1640970061", "sha1", "products/322674/devices/dev-001", "2018-10-31");
+    printf("signature %s\n", signature);
+    hmac_sha1(base64_key, strlen((char *)base64_key), signature, strlen((char *)signature), sign, &sing_len);
+    printf("sign");
+    for(i = 0; i < sing_len; i++)
+    {
+        printf(" %02x", sign[i]);
+    }
+    printf("\n");
+    memset(base64_key, 0, sizeof(base64_key));
+    base64_encode(sign, sing_len, base64_key);
+    printf("base64 encode %s\n", base64_key);
 
     esp_mqtt_client_config_t mqtt_cfg = {
         .host = "10.12.0.219",
