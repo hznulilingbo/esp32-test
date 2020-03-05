@@ -29,8 +29,9 @@
 
 #include "esp_log.h"
 #include "mqtt_client.h"
-#include "base64.h"
-#include "hmac.h"
+#include "mbedtls/md.h"
+#include "mbedtls/sha1.h"
+#include "mbedtls/base64.h"
 
 static const char *TAG = "MQTT_EXAMPLE";
 
@@ -43,6 +44,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
+            /*
             msg_id = esp_mqtt_client_publish(client, "/topic/qos1", "data_3", 0, 1, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
 
@@ -54,6 +56,7 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
 
             msg_id = esp_mqtt_client_unsubscribe(client, "/topic/qos1");
             ESP_LOGI(TAG, "sent unsubscribe successful, msg_id=%d", msg_id);
+            */
             break;
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -61,8 +64,10 @@ static esp_err_t mqtt_event_handler_cb(esp_mqtt_event_handle_t event)
 
         case MQTT_EVENT_SUBSCRIBED:
             ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
+            /*
             msg_id = esp_mqtt_client_publish(client, "/topic/qos0", "data", 0, 0, 0);
             ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+            */
             break;
         case MQTT_EVENT_UNSUBSCRIBED:
             ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
@@ -90,41 +95,110 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     mqtt_event_handler_cb(event_data);
 }
 
+static bool onenet_token(unsigned char *basetoken)
+{
+    int i, j;
+    unsigned char basekey[] = "PBA+6/QSINrOuneGgr9+98Zc/Bml5DWEOVbWkyEH8dM=";
+    unsigned char key[64] = {0};
+    unsigned int key_len = 0;
+    unsigned char signature[128] = {0};
+    unsigned char token[64] = {0};
+    const mbedtls_md_info_t *md_info;
+    mbedtls_md_context_t ctx;
+
+    if(mbedtls_base64_decode(key, 64, &key_len, basekey, strlen((char *)basekey)) != 0)
+    {
+        return false;
+    }
+    sprintf((char *)signature, "%s\n%s\n%s\n%s", "1640970061", "sha1", "products/322674/devices/dev-001", "2018-10-31");
+
+    md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA1);
+    mbedtls_md_init(&ctx);
+    if (mbedtls_md_setup(&ctx, md_info, 1) != 0) {
+        return false;
+    }
+    if (mbedtls_md_hmac_starts(&ctx, key, strlen((char *)key)) != 0) {
+        mbedtls_md_free(&ctx);
+        return false;
+    }
+    if (mbedtls_md_hmac_update(&ctx, signature, strlen((char *)signature)) != 0) {
+        mbedtls_md_free(&ctx);
+        return false;
+    }
+    if (mbedtls_md_hmac_finish(&ctx, token) != 0) {
+        mbedtls_md_free(&ctx);
+        return false;
+    }
+    mbedtls_md_free(&ctx);
+
+    memset(key, 0, 64);
+    mbedtls_base64_encode(key, 64, &key_len, token, strlen((char *)token));
+    printf("key %s\n", key);
+    memset(token, 0, 64);
+    for(i=0, j=0; i < strlen((char *)key); i++)
+    {
+        switch (key[i])
+        {
+            case '+':
+            memcpy(token + j, "%2B", 3);
+            j = j + 3;
+            break;
+            case ' ':
+            memcpy(token + j, "%20", 3);
+            j = j + 3;
+            break;
+            case '/':
+            memcpy(token + j, "%2F", 3);
+            j = j + 3;
+            break;
+            case '?':
+            memcpy(token + j, "%3F", 3);
+            j = j + 3;
+            break;
+            case '%':
+            memcpy(token + j, "%25", 3);
+            j = j + 3;
+            break;
+            case '#':
+            memcpy(token + j, "%23", 3);
+            j = j + 3;
+            break;
+            case '&':
+            memcpy(token + j, "%26", 3);
+            j = j + 3;
+            break;
+            case '=':
+            memcpy(token + j, "%3D", 3);
+            j = j + 3;
+            break;
+            default:
+            token[j] = key[i];
+            j++;
+            break;
+        }
+    }
+    printf("token %s\n", token);
+    snprintf((char *)basetoken, 256, "version=2018-10-31&res=%s&et=%s&method=%s&sign=%s", "products%2F322674%2Fdevices%2Fdev-001", "1640970061", "sha1", token);
+    printf("basetoken %s\n", basetoken);
+    return true;
+}
+
 static void mqtt_app_start(void)
 {
-    unsigned char key[] = "PBA+6/QSINrOuneGgr9+98Zc/Bml5DWEOVbWkyEH8dM=";
-    unsigned char base64_key[64] = {0};
-    unsigned char signature[128] = {0};
-    unsigned char sign[128] = {0};
-    size_t sing_len;
-
-    if(base64_decode(key, strlen((char *)key), base64_key) == 0)
+    unsigned char base64_token[256] = {0};
+    if( onenet_token(base64_token) == false)
     {
-        printf("base64 error\n");
+        printf("onenet_token error\n");
         return;
     }
-    printf("base64 decode");
-    int i = 0;
-    for(i = 0; i < strlen((char *)base64_key); i++)
-    {
-        printf(" %02x", base64_key[i]);
-    }
-    printf("\n");
-    sprintf((char *)signature, "%s\n%s\n%s\n%s", "1640970061", "sha1", "products/322674/devices/dev-001", "2018-10-31");
-    printf("signature %s\n", signature);
-    hmac_sha1(base64_key, strlen((char *)base64_key), signature, strlen((char *)signature), sign, &sing_len);
-    printf("sign");
-    for(i = 0; i < sing_len; i++)
-    {
-        printf(" %02x", sign[i]);
-    }
-    printf("\n");
-    memset(base64_key, 0, sizeof(base64_key));
-    base64_encode(sign, sing_len, base64_key);
-    printf("base64 encode %s\n", base64_key);
-
+    printf("base64 encode %s\n", base64_token);
+#if 1
     esp_mqtt_client_config_t mqtt_cfg = {
-        .host = "10.12.0.219",
+        .host = "183.230.40.96",
+        .port = 1883,
+        .client_id = "dev-001",
+        .username = "322674",
+        .password = (char *)base64_token,
     };
 #if CONFIG_BROKER_URL_FROM_STDIN
     char line[128];
@@ -154,6 +228,7 @@ static void mqtt_app_start(void)
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, client);
     esp_mqtt_client_start(client);
+#endif
 }
 
 void app_main(void)
