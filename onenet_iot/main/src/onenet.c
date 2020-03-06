@@ -40,13 +40,12 @@ void onenet_task(void *param)
         val =  s_device_info_num ;
         char buf[128];
         memset(buf, 0, sizeof(buf));
-        sprintf(&buf[3], "{\"%s\":%d}", ONENET_DATA_STREAM, val);
-        uint16_t len = strlen(&buf[3]);
-        buf[0] = data_type_simple_json_without_time;
-        buf[1] = len >> 8;
-        buf[2] = len & 0xFF;
+        sprintf(buf, "{\"id\":1,\"dp\":{\"%s\":[{\"v\":%d}]}}", "device", val);
+        uint16_t len = strlen(buf);
 
-        esp_mqtt_client_publish(client, "$dp", buf, len + 3, 0, 0);
+        printf("send data %s\n", buf);
+
+        esp_mqtt_client_publish(client, "$sys/322674/dev-001/dp/post/json", buf, len, 0, 0);
         s_device_info_num = 0;
 
         for (station_info_one = g_station_list->next; station_info_one; station_info_one = g_station_list->next) {

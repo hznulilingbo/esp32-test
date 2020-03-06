@@ -7,11 +7,11 @@
 #ifndef __ONENET_H__
 #define __ONENET_H__
 #include "mqtt_client.h"
-#define ONENET_HOST         "183.230.40.39"
-#define ONENET_PORT         (6002)
+#define ONENET_HOST         "183.230.40.96"
+#define ONENET_PORT         (1883)
 
 /* Here needs to be changed accoding to your oneONET configure. */
-#define ONENET_DEVICE_ID    CONFIG_DEVICE_ID                    // mqtt client id
+#define ONENET_DEVICE_ID    "dev-001"                    // mqtt client id
 #define ONENET_PROJECT_ID   CONFIG_PROJECT_ID                   // mqtt username
 #define ONENET_AUTH_INFO    CONFIG_AUTH_INFO                    // mqtt password
 #define ONENET_DATA_STREAM  CONFIG_DATA_STREAM                  // datastream name
